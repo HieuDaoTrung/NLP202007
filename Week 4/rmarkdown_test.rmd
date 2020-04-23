@@ -1,0 +1,71 @@
+---
+title: "HELLO WORLD"
+output:
+  html_document: default
+  pdf_document: default
+design: Hieu Dao Trung
+---
+
+<center><big>__SINH VIÊN GHI DANH__</big></center>
+
+<center>![](C:\\Users\\VG\\Downloads\\Capture.png)</center>
+
+```{r echo = FALSE, message=FALSE,warning=FALSE}
+library(dplyr)
+library(knitr)
+library(plotly)
+library(kableExtra)
+
+df <- readr::read_csv("https://rtstdev01.rtworkspace.com/api/dm/getData?token=your_token_here&dm_name=student_rta_hieudao&max_order=0&format=csv&mode=download")
+
+df <- df[,c("stdid", "stdname", "gender", "extracls_lb1", "extracls_lb2", "extracls_lb3",
+            "bday", "resid", "email", "phone", "clsroom")]
+
+dt <- kable(df) %>% kable_styling(fixed_thead = T,
+                                  bootstrap_options = c("striped", "hover")) %>% 
+  scroll_box(width = "1000px", height = "400px")
+```
+
+_DANH SÁCH SINH VIÊN_
+
+<center>`r dt`</center> 
+
+```{r include=FALSE}
+# Tạo các bảng phụ để  tính toán số lượng sinh viên theo giới của mỗi lớp
+v1 <- df %>% group_by(extracls_lb1) %>% 
+  summarise('Male'= sum(gender =='male'), 'Female' = sum(gender =='female'))%>%
+  rename("Class" = "extracls_lb1")
+v2 <- df %>% group_by(extracls_lb2) %>% 
+  summarise('Male'= sum(gender =='male'), 'Female' = sum(gender =='female')) %>%
+  rename("Class" = "extracls_lb2")
+v3 <- df %>% group_by(extracls_lb3) %>% 
+  summarise('Male'= sum(gender =='male'), 'Female' = sum(gender =='female')) %>% 
+  rename("Class" = "extracls_lb3")
+
+v <- rbind(rbind(v1,v2),v3) %>% group_by(Class) %>% summarise('Male' = sum(Male),'Female' = sum(Female)) %>%
+  na.omit(v)
+
+```
+
+_TỈ LỆ GIỚI TÍNH_
+
+```{r echo=FALSE}
+# Tạo pie chart (figure 1)
+count_gender <- count(df,gender)
+
+figure1 <- plot_ly(count_gender, labels = ~gender, values =~n, type='pie')
+```
+
+<center>`r figure1`</center>
+
+_SỐ LƯỢNG SINH VIÊN MỖI LỚP_
+```{r echo=FALSE}
+# Tạo bar chart (figure 2)
+x2 = list(title = "Classes")
+y2 = list(title = "Attendees")
+
+figure2 <- plot_ly(v, x=~Class, y=~Male, type ='bar', name='Male')
+figure2 <- figure2 %>% add_trace(y=~Female,name='Female') %>% layout(title = "Number of attendees by class", xaxis = x2, yaxis = y2, barmode = "stack")
+```
+
+<center>`r figure2`</center>
