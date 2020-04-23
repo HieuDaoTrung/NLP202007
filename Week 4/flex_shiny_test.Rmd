@@ -1,0 +1,189 @@
+---
+output: flexdashboard::flex_dashboard
+runtime: shiny
+design: Hieu Dao Trung
+---
+
+Page 1
+==========================================================
+```{r echo = FALSE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(DT)
+library(knitr)
+library(plotly)
+library(flexdashboard)
+library(shiny)
+
+# Load data
+df <- readr::read_csv("https://rtstdev01.rtworkspace.com/api/dm/getData?token=your_token_here&dm_name=student_rta_hieudao&max_order=0&format=csv&mode=download")
+
+# Count number of students = number of instances submitted
+total_std <- length(df$stdid)
+
+# Create new data frame for easier manipulation
+df <- df[,c("stdid", "stdname", "gender", "extracls_lb1", "extracls_lb2", "extracls_lb3", "bday", "clsroom" )]
+
+# Create new data frame with scroller&filter to show on UI
+dt <- datatable(df, filter = "top", colnames = c("Student ID", "Full name", "Gender", "Extra Class 1", 
+                                                 "Extra Class 2", "Class 3", "Date of birth", "Primary Class"),
+                extensions="Scroller", option=list(scrollX=1000, scrollY=400, scroller= TRUE))
+```
+
+<center><big><b>THÔNG TIN GHI DANH</b></big></center>
+
+<center>TỔNG SỐ SINH VIÊN LÀ `r total_std`</center>
+
+```{r include=FALSE}
+df1 <- df[, !(colnames(df) %in% c("extracls_lb2","extracls_lb3"))] %>%
+  rename("Class"="extracls_lb1")
+
+df2 <- df[, !(colnames(df) %in% c("extracls_lb3","extracls_lb1"))] %>%
+  rename("Class"="extracls_lb2")
+         
+df3 <- df[, !(colnames(df) %in% c("extracls_lb2","extracls_lb1"))] %>%
+  rename("Class"="extracls_lb3")
+
+#Create data frame including all (duplicated) names by classes
+df_new <- rbind(rbind(df1,df2),df3)
+df_new <- na.omit(df_new)
+
+```
+
+```{r include=FALSE}
+# Turn original df into gender-summary of each class
+df_extracls1 <- df %>% group_by(extracls_lb1) %>% 
+  summarise('Female' = sum(gender =='female'), 'Male' = sum(gender =='male')) %>%
+  rename("Class"="extracls_lb1")
+
+df_extracls2 <- df %>% group_by(extracls_lb2) %>% 
+  summarise('Female' = sum(gender =='female'), 'Male' = sum(gender =='male')) %>%
+  rename("Class"="extracls_lb2")
+
+df_extracls3 <- df %>% group_by(extracls_lb3) %>% 
+  summarise('Female' = sum(gender =='female'), 'Male' = sum(gender =='male')) %>%
+  rename("Class"="extracls_lb3")
+
+df_extracls <- rbind(rbind(df_extracls1,df_extracls2),df_extracls3) %>% 
+  group_by(Class) %>% summarise('Female' = sum(Female),'Male' = sum(Male)) %>%
+  na.omit(df_extracls_detail) #Loại bỏ NA value
+
+#Tạo data frame mới có row name
+df_extracls_new <- data.frame(df_extracls[, colnames(df_extracls) != "Class"], row.names = df_extracls$Class) 
+
+# ungroup all
+ungroup(df)
+ungroup(df_extracls)
+```
+
+Column {.sidebar}
+----------------------------------------------------------
+```{r}
+selectInput("filterclass", "Filter Class", choices = c(df_extracls$Class, "Total"))
+```
+
+Column
+----------------------------------------------------------
+### Table 1 All students
+```{r}
+# Render data table with DT format
+renderDT({
+  dt
+})
+```
+
+### Table 2 Students by each class
+```{r}
+renderDT({
+  df_new <- df_new[df_new$Class == input$filterclass,]
+  df_new <- datatable(df_new, filter = "top", extensions="Scroller", 
+                      colnames = c("Student ID", "Full name", "Gender", "Extra Class", "Date of birth",
+                                   "Primary Class"),
+                      option=list(scrollX=1000, scrollY=400, scroller= TRUE))
+})
+
+```
+
+Page 2 {data-orientation=rows}
+==========================================================
+
+```{r echo=FALSE}
+# Tạo format cho các chart
+colors = c("Female"="#ffff00", "Male"="#0000ff")
+label <- names(df_extracls_new)
+
+x2 = list(title = "Classes")
+y2 = list(title = "Attendees")
+```
+Row
+----------------------------------------------------------
+### TỈ LỆ SINH VIÊN NAM/ NỮ TRONG MỖI LỚP
+```{r}
+count_gender <- count(df,gender)
+
+# Render pie chart (figure 1) 
+renderPlotly({
+  
+  # Plot khi không dùng filter
+  figure1.1 <- plot_ly(df_extracls_new,
+                       labels= label,
+                       type = 'pie',
+                       values = c(sum(df$gender=="female"), sum(df$gender=="male")),
+                       marker = list(colors = colors[label]))
+  # Plot khi dùng filter
+  figure1.2 <- plot_ly(df_extracls_new,
+                       labels = label,
+                       type='pie',
+                       values = c(as.integer(df_extracls_new[input$filterclass,])),
+                       marker= list(colors = colors[label]))
+  
+  # Plot tương ứng với lựa chọn
+  if (input$filterclass =="Total"){
+     
+    figure1.1
+    
+  } else{
+    
+    figure1.2
+  }
+})
+```
+
+Row
+----------------------------------------------------------
+### BẢNG SO SÁNH SỐ LƯỢNG NAM/NỮ TRONG MỖI LỚP
+```{r}
+
+# render bar chart (figure2)
+renderPlotly({
+  # Plot khi không dùng filter
+  figure2.1 <- plot_ly(df_extracls, x=~Class, y=~Male, 
+                       type ='bar', name='Female',
+                       marker = list(colors = colors["Female"]))
+  
+  figure2.1 <- figure2.1 %>% add_trace(y=~Female, name='Male', 
+                                       marker = list(colors = colors["Male"])) %>% 
+    layout(xaxis = x2, yaxis = y2, barmode = "stack")
+
+  # Plot khi dùng filter
+  figure2.2 <- plot_ly(df_extracls, 
+                       x = input$filterclass,
+                       y = c(as.integer(df_extracls_new[input$filterclass,"Female"])), 
+                       type = 'bar', name = 'Female',
+                       marker = list(color = colors["Female"]))
+  
+  figure2.2 <- figure2.2 %>% add_trace(y=c(as.integer(df_extracls_new[input$filterclass,"Male"])),
+                                       name='Male', 
+                                       marker = list(color = colors["Male"])) %>% 
+    layout(xaxis = x2, yaxis = y2, barmode = "stack")
+  
+  # Plot tương ứng
+    if (input$filterclass =="Total"){
+     
+      figure2.1
+    
+    } else{
+    
+      figure2.2
+  }
+})
+```
